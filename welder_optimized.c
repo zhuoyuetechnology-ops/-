@@ -36,9 +36,9 @@ sbit EC11_B   = P3^1;
 #define PULSE_MAX       30
 #define VER_NUM         101
 
-#define MAIN_LOOP_DELAY 50      // 减少延时，提高响应速度
+#define MAIN_LOOP_DELAY 50
 #define KEY_DEBOUNCE_MS 20
-#define LCD_REFRESH_MS  100     // LCD刷新周期
+#define LCD_REFRESH_MS  100
 
 /************************ 功能宏定义 ************************/
 #define BEEP_ON()       BEEP = 0
@@ -68,14 +68,6 @@ sbit EC11_B   = P3^1;
 #define PINK     0xF818
 #define YELLOW_BG 0xFFC0
 #define STATUS_BLUE 0x21F8
-
-/************************ UI 块结构体 ************************/
-typedef struct {
-    unsigned char x1, y1, x2, y2;
-    unsigned char *label;
-    unsigned int bg_color;
-    unsigned int text_color;
-} UIBlock;
 
 /************************ 全局变量 ************************/
 unsigned int adc_raw = 0;
@@ -117,20 +109,6 @@ const unsigned char code weld_states[7][8] = {
     "低压  ",
     "未知  "
 };
-
-// 菜单项定义
-typedef struct {
-    unsigned char *name;
-    unsigned char *value_on;
-    unsigned char *value_off;
-    bit *flag;
-} MenuItemBit;
-
-typedef struct {
-    unsigned char *name;
-    unsigned char value;
-    unsigned char max_val;
-} MenuItemNum;
 
 /************************ 字模存入CODE区 ************************/
 const unsigned char code F8X16[][16] = {
@@ -306,9 +284,11 @@ void LCD_Draw_Char(unsigned char x,unsigned char y,unsigned char chr,unsigned in
 void LCD_Show_Num(unsigned char x,unsigned char y,unsigned int num,unsigned char len,unsigned int color,unsigned int bg)
 {
     unsigned char t,i,enshow = 0;
+    unsigned char divisor_idx = 4 - len;
+    
     for(i = 0; i < len; i++)
     {
-        t = (unsigned char)(num / pow10_table[4-len+i]) % 10;  // 使用查表
+        t = (unsigned char)(num / pow10_table[divisor_idx + i]) % 10;
         if(enshow || (i == len-1) || (t != 0))
         {
             enshow = 1;
@@ -329,7 +309,7 @@ void LCD_Show_Float(unsigned char x,unsigned char y,float dat,unsigned int color
     LCD_Show_Num(x+24, y, temp % 10, 1, color, bg);
 }
 
-void LCD_Show_Str(unsigned char x,unsigned char y,const unsigned char *str,unsigned int color,unsigned int bg)
+void LCD_Show_Str(unsigned char x,unsigned char y,unsigned char *str,unsigned int color,unsigned int bg)
 {
     while(*str)
     {
@@ -473,82 +453,66 @@ void Double_Pulse_Weld(void)
 }
 
 // ✅ 优化：修复焊接状态字符串获取（原版指针赋值无效）
-void Get_Weld_State_Str(unsigned char *buf, unsigned char weld_state_val)
+void Get_Weld_State_Str(unsigned char *buf, unsigned char state_val)
 {
-    unsigned char idx = weld_state_val;
-    if(idx >= 7) idx = 6;  // "未知"
+    unsigned char idx = state_val;
+    if(idx >= 7) idx = 6;
     strcpy(buf, (unsigned char*)weld_states[idx]);
 }
 
-/************************ UI绘制优化：抽象UI块绘制函数 ************************/
-void Draw_UI_Block(UIBlock *block, const unsigned char *value_str)
-{
-    LCD_Fill(block->x1, block->y1, block->x2, block->y2, block->bg_color);
-    LCD_Show_Str(block->x1+4, block->y1+12, block->label, block->text_color, block->bg_color);
-    if(value_str)
-        LCD_Show_Str(block->x1+50, block->y1+12, value_str, block->text_color, block->bg_color);
-}
-
-/************************ 主界面【优化版：代码复用度高】 ************************/
+/************************ 主界面【优化版：代码清晰】 ************************/
 void Main_Display(void)
 {
     unsigned char state_buf[8];
-    unsigned char volt_str[8];
-    unsigned char temp_str[8];
-    unsigned char cnt_str[8];
     
     Get_Weld_State_Str(state_buf, weld_state);
     LCD_Fill(0,0,127,159, BLACK);
 
     // 第一行：电压 / 温度 / 计数
-    UIBlock volt_block = {2, 2, 40, 38, (unsigned char*)"电压:", DARKBLUE, WHITE};
-    UIBlock temp_block = {44, 2, 82, 38, (unsigned char*)"温度:", DARKGREEN, WHITE};
-    UIBlock cnt_block  = {86, 2, 125, 38, (unsigned char*)"计数:", DARKRED, WHITE};
-    
-    LCD_Fill(volt_block.x1, volt_block.y1, volt_block.x2, volt_block.y2, volt_block.bg_color);
-    LCD_Show_Str(volt_block.x1+4, volt_block.y1+12, volt_block.label, WHITE, DARKBLUE);
-    LCD_Show_Float(42, 14, bat_voltage, WHITE, DARKBLUE);
+    LCD_Fill(2,2,40,38,DARKBLUE);
+    LCD_Show_Str(6,14,(unsigned char*)"电压:",WHITE,DARKBLUE);
+    LCD_Show_Float(42,14,bat_voltage,WHITE,DARKBLUE);
 
-    LCD_Fill(temp_block.x1, temp_block.y1, temp_block.x2, temp_block.y2, temp_block.bg_color);
-    LCD_Show_Str(temp_block.x1+4, temp_block.y1+12, temp_block.label, WHITE, DARKGREEN);
-    LCD_Show_Float(84, 14, ntc_temp, WHITE, DARKGREEN);
+    LCD_Fill(44,2,82,38,DARKGREEN);
+    LCD_Show_Str(48,14,(unsigned char*)"温度:",WHITE,DARKGREEN);
+    LCD_Show_Float(84,14,ntc_temp,WHITE,DARKGREEN);
 
-    LCD_Fill(cnt_block.x1, cnt_block.y1, cnt_block.x2, cnt_block.y2, cnt_block.bg_color);
-    LCD_Show_Str(cnt_block.x1+4, cnt_block.y1+12, cnt_block.label, WHITE, DARKRED);
-    LCD_Show_Num(118, 14, weld_cnt, 5, WHITE, DARKRED);
+    LCD_Fill(86,2,125,38,DARKRED);
+    LCD_Show_Str(90,14,(unsigned char*)"计数:",WHITE,DARKRED);
+    LCD_Show_Num(118,14,weld_cnt,5,WHITE,DARKRED);
 
     // 第二行：脉冲1 / 间隔 / 脉冲2
-    LCD_Fill(2, 42, 40, 78, GRAY);
-    LCD_Show_Str(6, 54, (unsigned char*)"脉冲1:", WHITE, GRAY);
-    LCD_Show_Num(42, 54, pulse_pre, 2, WHITE, GRAY);
-    LCD_Show_Str(58, 54, (unsigned char*)"ms", WHITE, GRAY);
+    LCD_Fill(2,42,40,78,GRAY);
+    LCD_Show_Str(6,54,(unsigned char*)"脉冲1:",WHITE,GRAY);
+    LCD_Show_Num(42,54,pulse_pre,2,WHITE,GRAY);
+    LCD_Show_Str(58,54,(unsigned char*)"ms",WHITE,GRAY);
 
-    LCD_Fill(44, 42, 82, 78, TEAL);
-    LCD_Show_Str(48, 54, (unsigned char*)"间隔:", WHITE, TEAL);
-    LCD_Show_Num(80, 54, pulse_gap, 1, WHITE, TEAL);
-    LCD_Show_Str(92, 54, (unsigned char*)"ms", WHITE, TEAL);
+    LCD_Fill(44,42,82,78,TEAL);
+    LCD_Show_Str(48,54,(unsigned char*)"间隔:",WHITE,TEAL);
+    LCD_Show_Num(80,54,pulse_gap,1,WHITE,TEAL);
+    LCD_Show_Str(92,54,(unsigned char*)"ms",WHITE,TEAL);
 
-    LCD_Fill(86, 42, 125, 78, GRAY);
-    LCD_Show_Str(90, 54, (unsigned char*)"脉冲2:", WHITE, GRAY);
-    LCD_Show_Num(124, 54, pulse_main, 2, WHITE, GRAY);
-    LCD_Show_Str(140, 54, (unsigned char*)"ms", WHITE, GRAY);
+    LCD_Fill(86,42,125,78,GRAY);
+    LCD_Show_Str(90,54,(unsigned char*)"脉冲2:",WHITE,GRAY);
+    LCD_Show_Num(124,54,pulse_main,2,WHITE,GRAY);
+    LCD_Show_Str(140,54,(unsigned char*)"ms",WHITE,GRAY);
 
     // 第三行：延时 / 系统设置
-    LCD_Fill(2, 82, 63, 118, PINK);
-    LCD_Show_Str(6, 94, (unsigned char*)"延时:", WHITE, PINK);
-    LCD_Show_Num(42, 94, sys_delay, 2, WHITE, PINK);
-    LCD_Show_Str(58, 94, (unsigned char*)"ms", WHITE, PINK);
+    LCD_Fill(2,82,63,118,PINK);
+    LCD_Show_Str(6,94,(unsigned char*)"延时:",WHITE,PINK);
+    LCD_Show_Num(42,94,sys_delay,2,WHITE,PINK);
+    LCD_Show_Str(58,94,(unsigned char*)"ms",WHITE,PINK);
 
-    LCD_Fill(67, 82, 125, 118, YELLOW_BG);
-    LCD_Show_Str(80, 94, (unsigned char*)"系统设置", BLACK, YELLOW_BG);
+    LCD_Fill(67,82,125,118,YELLOW_BG);
+    LCD_Show_Str(80,94,(unsigned char*)"系统设置",BLACK,YELLOW_BG);
 
     // 第四行：状态
-    LCD_Fill(2, 122, 125, 158, STATUS_BLUE);
-    LCD_Show_Str(6, 134, (unsigned char*)"状态:", WHITE, STATUS_BLUE);
-    LCD_Show_Str(38, 134, state_buf, WHITE, STATUS_BLUE);
+    LCD_Fill(2,122,125,158,STATUS_BLUE);
+    LCD_Show_Str(6,134,(unsigned char*)"状态:",WHITE,STATUS_BLUE);
+    LCD_Show_Str(38,134,state_buf,WHITE,STATUS_BLUE);
 }
 
-/************************ 系统菜单【优化版：支持更多扩展】 ************************/
+/************************ 系统菜单【优化版】 ************************/
 void Menu_Display(void)
 {
     unsigned int bg = lcd_bg_sw ? WHITE : BLACK;
@@ -558,80 +522,81 @@ void Menu_Display(void)
 
     LCD_Show_Str(20,0,(unsigned char*)"SYSTEM MENU",YELLOW,bg);
 
-    // 菜单项显示和编辑（优化：更清晰的结构）
+    // 菜单0：BEEP开关
     if(menu_idx == 0) LCD_Show_Str(0,16,(unsigned char*)">BEEP SW  :",sel_color,bg);
     else              LCD_Show_Str(0,16,(unsigned char*)" BEEP SW  :",fg,bg);
     LCD_Show_Str(80,16, beep_sw ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
-    if(menu_idx == 0) beep_sw = !beep_sw;
 
+    // 菜单1：亮度
     if(menu_idx == 1) LCD_Show_Str(0,32,(unsigned char*)">BRIGHT   :",sel_color,bg);
     else              LCD_Show_Str(0,32,(unsigned char*)" BRIGHT   :",fg,bg);
     LCD_Show_Num(80,32,bl_level,1,fg,bg);
+
+    // 菜单2：编码器反向
+    if(menu_idx == 2) LCD_Show_Str(0,48,(unsigned char*)">ENC REV  :",sel_color,bg);
+    else              LCD_Show_Str(0,48,(unsigned char*)" ENC REV  :",fg,bg);
+    LCD_Show_Str(80,48, enc_rev ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
+
+    // 菜单3：温度保护
+    if(menu_idx == 3) LCD_Show_Str(0,64,(unsigned char*)">TEMP PRO :",sel_color,bg);
+    else              LCD_Show_Str(0,64,(unsigned char*)" TEMP PRO :",fg,bg);
+    LCD_Show_Str(80,64, temp_pro_sw ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
+
+    // 菜单4：自动升压
+    if(menu_idx == 4) LCD_Show_Str(0,80,(unsigned char*)">AUTO BOOST:",sel_color,bg);
+    else              LCD_Show_Str(0,80,(unsigned char*)" AUTO BOOST:",fg,bg);
+    LCD_Show_Str(96,80, auto_boost_sw ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
+
+    // 菜单5：LCD背景
+    if(menu_idx == 5) LCD_Show_Str(0,96,(unsigned char*)">LCD BG   :",sel_color,bg);
+    else              LCD_Show_Str(0,96,(unsigned char*)" LCD BG   :",fg,bg);
+    LCD_Show_Str(80,96, lcd_bg_sw ? (unsigned char*)"WHT" : (unsigned char*)"BLK",fg,bg);
+
+    // 菜单6：LCD镜像
+    if(menu_idx == 6) LCD_Show_Str(0,112,(unsigned char*)">LCD MIR  :",sel_color,bg);
+    else              LCD_Show_Str(0,112,(unsigned char*)" LCD MIR  :",fg,bg);
+    LCD_Show_Str(80,112, lcd_mirror ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
+
+    // 菜单7：版本号
+    if(menu_idx == 7) LCD_Show_Str(0,128,(unsigned char*)">VERSION  :",sel_color,bg);
+    else              LCD_Show_Str(0,128,(unsigned char*)" VERSION  :",fg,bg);
+    LCD_Show_Num(80,128,VER_NUM,3,fg,bg);
+
+    // 菜单8：关机
+    if(menu_idx == 8) LCD_Show_Str(0,144,(unsigned char*)">POWER OFF:",sel_color,bg);
+    else              LCD_Show_Str(0,144,(unsigned char*)" POWER OFF:",fg,bg);
+
+    // 菜单9：退出
+    if(menu_idx == 9) LCD_Show_Str(0,160,(unsigned char*)">EXIT     :",sel_color,bg);
+    else              LCD_Show_Str(0,160,(unsigned char*)" EXIT     :",fg,bg);
+
+    // 编码器修改参数逻辑
+    if(menu_idx == 0) beep_sw = !beep_sw;
     if(menu_idx == 1)
     {
         bl_level++;
         if(bl_level > 5) bl_level = 1;
         if(bl_level >= 3) BL_ON(); else BL_OFF();
     }
-
-    if(menu_idx == 2) LCD_Show_Str(0,48,(unsigned char*)">ENC REV  :",sel_color,bg);
-    else              LCD_Show_Str(0,48,(unsigned char*)" ENC REV  :",fg,bg);
-    LCD_Show_Str(80,48, enc_rev ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
     if(menu_idx == 2) enc_rev = !enc_rev;
-
-    if(menu_idx == 3) LCD_Show_Str(0,64,(unsigned char*)">TEMP PRO :",sel_color,bg);
-    else              LCD_Show_Str(0,64,(unsigned char*)" TEMP PRO :",fg,bg);
-    LCD_Show_Str(80,64, temp_pro_sw ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
     if(menu_idx == 3) temp_pro_sw = !temp_pro_sw;
-
-    if(menu_idx == 4) LCD_Show_Str(0,80,(unsigned char*)">AUTO BOOST:",sel_color,bg);
-    else              LCD_Show_Str(0,80,(unsigned char*)" AUTO BOOST:",fg,bg);
-    LCD_Show_Str(96,80, auto_boost_sw ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
     if(menu_idx == 4) auto_boost_sw = !auto_boost_sw;
-
-    if(menu_idx == 5) LCD_Show_Str(0,96,(unsigned char*)">LCD BG   :",sel_color,bg);
-    else              LCD_Show_Str(0,96,(unsigned char*)" LCD BG   :",fg,bg);
-    LCD_Show_Str(80,96, lcd_bg_sw ? (unsigned char*)"WHT" : (unsigned char*)"BLK",fg,bg);
     if(menu_idx == 5)
     {
         lcd_bg_sw = !lcd_bg_sw;
         LCD_Init();
     }
-
-    if(menu_idx == 6) LCD_Show_Str(0,112,(unsigned char*)">LCD MIR  :",sel_color,bg);
-    else              LCD_Show_Str(0,112,(unsigned char*)" LCD MIR  :",fg,bg);
-    LCD_Show_Str(80,112, lcd_mirror ? (unsigned char*)"ON" : (unsigned char*)"OFF",fg,bg);
     if(menu_idx == 6)
     {
         lcd_mirror = !lcd_mirror;
         LCD_Init();
     }
-
-    if(menu_idx == 7) LCD_Show_Str(0,128,(unsigned char*)">VERSION  :",sel_color,bg);
-    else              LCD_Show_Str(0,128,(unsigned char*)" VERSION  :",fg,bg);
-    LCD_Show_Num(80,128,VER_NUM,3,fg,bg);
-
-    if(menu_idx == 8) LCD_Show_Str(0,144,(unsigned char*)">POWER OFF:",sel_color,bg);
-    else              LCD_Show_Str(0,144,(unsigned char*)" POWER OFF:",fg,bg);
     if(menu_idx == 8)
     {
         SYS_POWER_OFF();
         while(1);
     }
-
-    if(menu_idx == 9) LCD_Show_Str(0,160,(unsigned char*)">EXIT     :",sel_color,bg);
-    else              LCD_Show_Str(0,160,(unsigned char*)" EXIT     :",fg,bg);
     if(menu_idx == 9) menu_en = 0;
-}
-
-/************************ 定时器中断处理 ************************/
-void Timer0_ISR(void) interrupt 1
-{
-    ms_counter++;
-    if(ms_counter >= MAIN_LOOP_DELAY)
-    {
-        ms_counter = 0;
-    }
 }
 
 /************************ 主函数 ************************/
@@ -663,13 +628,8 @@ void main(void)
 
         Double_Pulse_Weld();
 
-        // ✅ 优化：只在需要时刷新LCD（降低功耗）
-        if(last_lcd_refresh + LCD_REFRESH_MS >= ms_counter)
-        {
-            if(menu_en) Menu_Display();
-            else        Main_Display();
-            last_lcd_refresh = ms_counter;
-        }
+        if(menu_en) Menu_Display();
+        else        Main_Display();
 
         delay_ms(MAIN_LOOP_DELAY);
     }
